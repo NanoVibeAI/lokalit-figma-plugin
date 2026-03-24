@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { PluginConfig, SerializedNode, Project, LocalizationKey, Language, SelectionType } from "./types";
 import { isTokenExpired, refreshAccessToken, exchangeCodeForTokens, api } from "./api";
 import { generateCodeVerifier, generateCodeChallenge, generateRequestId } from "./crypto";
@@ -38,6 +38,7 @@ export function App() {
   const [projectSlug, setProjectSlug] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [keys, setKeys] = useState<LocalizationKey[]>([]);
+  const [originalKeys, setOriginalKeys] = useState<LocalizationKey[]>([]);
   const [language, setLanguageState] = useState<string | null>(null);
   const [allLanguages, setAllLanguages] = useState<Language[]>([]);
 
@@ -112,14 +113,18 @@ export function App() {
         setProjectSlug(mappingRes.projectSlug);
         try {
           const keysRes = (await callApi("GET", `/api/projects/${encodeURIComponent(mappingRes.projectSlug)}/keys`)) as { keys?: LocalizationKey[] };
-          setKeys(keysRes.keys || []);
+          const loadedKeys = keysRes.keys || [];
+          setKeys(loadedKeys);
+          setOriginalKeys(loadedKeys);
         } catch {
           setKeys([]);
+          setOriginalKeys([]);
         }
       } else {
         setLinked(false);
         setProjectSlug(null);
         setKeys([]);
+        setOriginalKeys([]);
       }
     } catch (err) {
       console.error("[Lokalit] loadMainData failed:", err);
@@ -216,9 +221,12 @@ export function App() {
     setProjectSlug(slug);
     try {
       const keysRes = (await callApi("GET", `/api/projects/${encodeURIComponent(slug)}/keys`)) as { keys?: LocalizationKey[] };
-      setKeys(keysRes.keys || []);
+      const loadedKeys = keysRes.keys || [];
+      setKeys(loadedKeys);
+      setOriginalKeys(loadedKeys);
     } catch {
       setKeys([]);
+      setOriginalKeys([]);
     }
   }, [fileId, callApi]);
 
@@ -248,6 +256,20 @@ export function App() {
     return newKey;
   }, []);
 
+  // ── Auto-sync node plugin data ───────────────────────────────────────────
+  useEffect(() => {
+    if (!linked) return;
+    const nodes = selectionType === "text" && selectionNode ? [selectionNode] : selectionTextNodes;
+    if (nodes.length === 0) return;
+
+    const dataToSave = nodes.map(n => ({ 
+      id: n.id, 
+      keySlug: n.keySlug || null 
+    }));
+    
+    postMsg({ type: "save-nodes-data", nodes: dataToSave });
+  }, [selectionTextNodes, linked, selectionType, selectionNode]);
+
   const syncKeys = useCallback(async (allKeys: LocalizationKey[]) => {
     if (!projectSlug) return;
     try {
@@ -261,7 +283,9 @@ export function App() {
       }) as { keys: LocalizationKey[] };
 
       if (res.keys) {
-        setKeys(res.keys.sort((a, b) => a.key.localeCompare(b.key)));
+        const sorted = res.keys.sort((a, b) => a.key.localeCompare(b.key));
+        setKeys(sorted);
+        setOriginalKeys(sorted);
       }
     } catch (err) {
       console.error("[Lokalit] Sync failed:", err);
@@ -298,11 +322,23 @@ export function App() {
     setLinked(false);
     setProjectSlug(null);
     setKeys([]);
+    setOriginalKeys([]);
   }, [fileId, callApi]);
 
   const notify = (message: string, options?: { error?: boolean; timeout?: number }) => {
     postMsg({ type: "notify", message, options });
   };
+
+  const isDirty = useMemo(() => {
+    if (keys.length !== originalKeys.length) return true;
+    for (const k of keys) {
+      if (k._id.startsWith("temp_")) return true;
+      const origK = originalKeys.find((o) => o._id === k._id);
+      if (!origK) return true;
+      if (JSON.stringify(k.values) !== JSON.stringify(origK.values)) return true;
+    }
+    return false;
+  }, [keys, originalKeys]);
 
   // ── Messages from code.ts ───────────────────────────────────────────────
   useEffect(() => {
@@ -418,6 +454,7 @@ export function App() {
   return (
     <MainScreen
       linked={linked}
+      isDirty={isDirty}
       projectSlug={projectSlug}
       projects={projects}
       allLanguages={allLanguages}

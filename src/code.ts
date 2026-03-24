@@ -69,8 +69,8 @@ function buildSelectionPayload(): object {
   const selection = figma.currentPage.selection;
   if (selection.length === 0) return { selectionType: "none" };
 
-  if (selection.some((node) => node.type === "INSTANCE")) {
-    return { selectionType: "instance" };
+  if (selection.some((node) => node.type === "COMPONENT")) {
+    return { selectionType: "component" };
   }
 
   if (selection.length === 1) {
@@ -217,6 +217,23 @@ async function init(): Promise<void> {
         break;
       }
 
+      case "save-nodes-data": {
+        const payload = msg as any;
+        if (!payload.nodes) break;
+        let count = 0;
+        for (const item of payload.nodes) {
+          const node = await figma.getNodeByIdAsync(item.id);
+          if (!node || !("setPluginData" in node)) continue;
+          if (item.keySlug) {
+            node.setPluginData("lokalit_key_slug", item.keySlug);
+          } else {
+            node.setPluginData("lokalit_key_slug", "");
+          }
+          count++;
+        }
+        break;
+      }
+
       case "set-language":
         if (msg.language) {
           await figma.clientStorage.setAsync(
@@ -227,8 +244,9 @@ async function init(): Promise<void> {
         break;
 
       case "notify":
-        if (msg.message) {
-          figma.notify(msg.message, (msg as any).options);
+        const notifyPayload = msg as any;
+        if (notifyPayload.message) {
+          figma.notify(notifyPayload.message, notifyPayload.options);
         }
         break;
 

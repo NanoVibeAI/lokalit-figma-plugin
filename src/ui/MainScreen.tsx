@@ -12,6 +12,7 @@ import { SettingsDialog } from "./SettingsDialog";
 
 interface Props {
   linked: boolean;
+  isDirty: boolean;
   projectSlug: string | null;
   projects: Project[];
   allLanguages: Language[];
@@ -39,10 +40,12 @@ interface Props {
     message: string,
     options?: { error?: boolean; timeout?: number },
   ) => void;
+  onSaveNodesData: (nodes: { id: string; keySlug: string | null; sharedValue?: string }[]) => void;
 }
 
 export function MainScreen({
   linked,
+  isDirty,
   projectSlug,
   projects,
   allLanguages,
@@ -90,6 +93,7 @@ export function MainScreen({
   }, [project]);
 
   const effectiveLanguage = language || project?.defaultLanguage || null;
+
 
   return (
     <div
@@ -259,7 +263,7 @@ export function MainScreen({
         )}
       </div>
 
-      {/* Main Footer (Sync) */}
+      {/* Main Footer (Sync & Update) */}
       <div
         style={{
           padding: "16px",
@@ -267,25 +271,27 @@ export function MainScreen({
           background: "#fff",
           display: "flex",
           justifyContent: "flex-end",
+          gap: "8px",
         }}
       >
+
         <button
           onClick={handleSync}
-          disabled={syncing}
+          disabled={syncing || !isDirty}
           style={{
             width: "max-content",
             padding: "8px 12px",
-            background: syncing ? "#ccc" : "#007a55",
+            background: syncing || !isDirty ? "#ccc" : "#007a55",
             color: "#fff",
             border: "none",
             borderRadius: 12,
             fontSize: 13,
             fontWeight: 600,
-            cursor: syncing ? "default" : "pointer",
+            cursor: syncing || !isDirty ? "default" : "pointer",
             transition: "background 0.2s",
           }}
         >
-          {syncing ? "Syncing to Lokalit..." : "Sync to Lokalit"}
+          {syncing ? "Syncing..." : "Sync to Lokalit"}
         </button>
       </div>
 
