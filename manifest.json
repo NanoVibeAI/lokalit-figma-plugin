@@ -1,0 +1,22 @@
+{
+  "name": "Lokalit",
+  "id": "1618085128748348976",
+  "api": "1.0.0",
+  "main": "code.js",
+  "capabilities": [],
+  "enableProposedApi": false,
+  "documentAccess": "dynamic-page",
+  "editorType": [
+    "figma"
+  ],
+  "ui": "ui.html",
+  "networkAccess": {
+    "allowedDomains": [
+      "https://lokalit.nanovibe.org",
+      "https://pjwvbgauwgyqkwuhzarf.supabase.co"
+    ],
+    "devAllowedDomains": [
+      "http://localhost:3001"
+    ]
+  }
+}
