@@ -139,7 +139,6 @@ async function init(): Promise<void> {
               );
             }
           }
-          figma.notify(`Updated ${msg.updates.length} nodes`);
         }
         break;
 
@@ -224,6 +223,12 @@ async function init(): Promise<void> {
             STORAGE_KEY_LANGUAGE,
             msg.language,
           );
+        }
+        break;
+
+      case "notify":
+        if (msg.message) {
+          figma.notify(msg.message, (msg as any).options);
         }
         break;
 

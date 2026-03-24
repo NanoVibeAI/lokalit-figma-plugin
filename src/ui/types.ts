@@ -28,3 +28,10 @@ export interface LocalizationKey {
   key: string;
   values?: Record<string, string>;
 }
+
+export type SelectionType = "none" | "text" | "frame" | "multi" | "instance";
+
+export interface Language {
+  key: string;
+  name: string;
+}

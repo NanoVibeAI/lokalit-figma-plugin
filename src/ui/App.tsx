@@ -1,5 +1,6 @@
+import * as React from "react";
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { PluginConfig, SerializedNode, Project, LocalizationKey } from "./types";
+import type { PluginConfig, SerializedNode, Project, LocalizationKey, Language, SelectionType } from "./types";
 import { isTokenExpired, refreshAccessToken, exchangeCodeForTokens, api } from "./api";
 import { generateCodeVerifier, generateCodeChallenge, generateRequestId } from "./crypto";
 import { LoginScreen } from "./LoginScreen";
@@ -38,9 +39,10 @@ export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [keys, setKeys] = useState<LocalizationKey[]>([]);
   const [language, setLanguageState] = useState<string | null>(null);
+  const [allLanguages, setAllLanguages] = useState<Language[]>([]);
 
   // Selection state
-  const [selectionType, setSelectionType] = useState<"none" | "text" | "frame" | "multi">("none");
+  const [selectionType, setSelectionType] = useState<SelectionType>("none");
   const [selectionNode, setSelectionNode] = useState<SerializedNode | null>(null);
   const [selectionTextNodes, setSelectionTextNodes] = useState<SerializedNode[]>([]);
 
@@ -91,16 +93,19 @@ export function App() {
   const loadMainData = useCallback(async (fid: string | null) => {
     setScreen("main");
     try {
-      const [mappingRes, projectsRes] = await Promise.all([
+      const [mappingRes, projectsRes, languagesRes] = await Promise.all([
         fid ? callApi("GET", `/api/figma/file-mapping?fileId=${encodeURIComponent(fid)}`) : Promise.resolve({ linked: false }),
         callApi("GET", "/api/figma/projects"),
+        callApi("GET", "/api/global/languages"),
       ]) as [
         { linked: boolean; projectSlug?: string; fileId?: string },
         { projects?: Project[] },
+        Language[],
       ];
 
       const loadedProjects = projectsRes.projects || [];
       setProjects(loadedProjects);
+      setAllLanguages(languagesRes || []);
 
       if (mappingRes.linked && mappingRes.projectSlug) {
         setLinked(true);
@@ -232,16 +237,44 @@ export function App() {
     }
   }, [projectSlug, callApi]);
 
+  const createKey = useCallback(async (keyName: string) => {
+    // Local-only creation until Sync is clicked
+    const newKey: LocalizationKey = {
+      _id: `temp_${Date.now()}`,
+      key: keyName.trim(),
+      values: {},
+    };
+    setKeys((prev) => [...prev, newKey].sort((a, b) => a.key.localeCompare(b.key)));
+    return newKey;
+  }, []);
+
+  const syncKeys = useCallback(async (allKeys: LocalizationKey[]) => {
+    if (!projectSlug) return;
+    try {
+      const payload = allKeys.map(k => ({
+        key: k.key,
+        values: k.values || {}
+      }));
+
+      const res = await callApi("POST", `/api/projects/${encodeURIComponent(projectSlug)}/keys/bulk`, {
+        keys: payload
+      }) as { keys: LocalizationKey[] };
+
+      if (res.keys) {
+        setKeys(res.keys.sort((a, b) => a.key.localeCompare(b.key)));
+      }
+    } catch (err) {
+      console.error("[Lokalit] Sync failed:", err);
+      throw err;
+    }
+  }, [projectSlug, callApi]);
+
   const applyTranslations = useCallback((nodes: SerializedNode[], lang: string | null) => {
     if (!lang) return;
     const updates = nodes.map(n => {
       const keyObj = keys.find(k => k.key === n.keySlug);
       if (!keyObj || !keyObj.values) return null;
       let val = keyObj.values[lang];
-      if (!val) {
-        const approx = Object.keys(keyObj.values).find(k => k.startsWith(lang + "-") || lang.startsWith(k + "-"));
-        if (approx) val = keyObj.values[approx];
-      }
       if (!val) return null;
       return { id: n.id, characters: val };
     }).filter((u): u is { id: string; characters: string } => u !== null);
@@ -266,6 +299,10 @@ export function App() {
     setProjectSlug(null);
     setKeys([]);
   }, [fileId, callApi]);
+
+  const notify = (message: string, options?: { error?: boolean; timeout?: number }) => {
+    postMsg({ type: "notify", message, options });
+  };
 
   // ── Messages from code.ts ───────────────────────────────────────────────
   useEffect(() => {
@@ -383,6 +420,7 @@ export function App() {
       linked={linked}
       projectSlug={projectSlug}
       projects={projects}
+      allLanguages={allLanguages}
       keys={keys}
       language={language}
       selectionType={selectionType}
@@ -396,7 +434,12 @@ export function App() {
       onRevertTranslations={revertTranslations}
       onSaveFileLink={saveFileLink}
       onUnlinkFile={unlinkFile}
-      onLogout={forceLogout}
+      onLogout={() => {
+        postMsg({ type: "logout" });
+      }}
+      onCreateKey={createKey}
+      onSync={syncKeys}
+      onNotify={notify}
     />
   );
 }
