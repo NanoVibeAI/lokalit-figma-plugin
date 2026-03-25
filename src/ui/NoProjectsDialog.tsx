@@ -90,6 +90,8 @@ export function NoProjectsDialog({
     return "Used in URLs. Auto-generated from project name.";
   }, [slugChecking, slugAvailable]);
 
+  const slugExists = slugAvailable === false;
+
   const toggleOtherLanguage = (lang: string) => {
     setOtherLanguages((prev) => {
       if (prev.includes(lang)) return prev.filter((l) => l !== lang);
@@ -126,7 +128,13 @@ export function NoProjectsDialog({
             <p className="muted">There is no project created or available, please create one first.</p>
             <div className="row" style={{ gap: 8, marginTop: 4 }}>
               <div className="fill" />
-              <button className="btn-primary btn-sm" onClick={() => setMode("create")}>Create new project</button>
+              <button
+                className="btn-primary btn-sm"
+                style={{ background: "#007a55" }}
+                onClick={() => setMode("create")}
+              >
+                Create new project
+              </button>
             </div>
           </>
         ) : (
@@ -147,8 +155,21 @@ export function NoProjectsDialog({
 
             <div>
               <label htmlFor="first-project-slug">Slug</label>
-              <input id="first-project-slug" type="text" value={newSlug} readOnly placeholder="auto-generated from name" />
-              <p className="muted" style={{ marginTop: 4 }}>
+              <input
+                id="first-project-slug"
+                type="text"
+                value={newSlug}
+                readOnly
+                placeholder="auto-generated from name"
+                style={slugExists ? { borderColor: "#e53e3e" } : undefined}
+              />
+              <p
+                className="muted"
+                style={{
+                  marginTop: 4,
+                  color: slugExists ? "#e53e3e" : undefined,
+                }}
+              >
                 {slugStatusMessage}
               </p>
             </div>
@@ -202,7 +223,12 @@ export function NoProjectsDialog({
             <div className="row" style={{ gap: 8, marginTop: 4 }}>
               <button className="btn-secondary btn-sm" disabled={saving} onClick={() => setMode("empty")}>Back</button>
               <div className="fill" />
-              <button className="btn-primary btn-sm" disabled={!canCreate} onClick={handleCreate}>
+              <button
+                className="btn-primary btn-sm"
+                style={{ background: "#007a55" }}
+                disabled={!canCreate}
+                onClick={handleCreate}
+              >
                 {saving ? "Creating..." : "Create new project"}
               </button>
             </div>

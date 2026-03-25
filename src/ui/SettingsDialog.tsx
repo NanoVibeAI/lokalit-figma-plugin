@@ -92,6 +92,8 @@ export function SettingsDialog({ projects, allLanguages, currentSlug, linked, on
     return "Used in URLs. Auto-generated from project name.";
   }, [slugChecking, slugAvailable]);
 
+  const slugExists = slugAvailable === false;
+
   const handleSave = async () => {
     if (!selectedSlug) {
       setError("Please select a project.");
@@ -210,8 +212,21 @@ export function SettingsDialog({ projects, allLanguages, currentSlug, linked, on
 
             <div>
               <label htmlFor="new-project-slug">Slug</label>
-              <input id="new-project-slug" type="text" value={newSlug} readOnly placeholder="auto-generated from name" />
-              <p className="muted" style={{ marginTop: 4 }}>
+              <input
+                id="new-project-slug"
+                type="text"
+                value={newSlug}
+                readOnly
+                placeholder="auto-generated from name"
+                style={slugExists ? { borderColor: "#e53e3e" } : undefined}
+              />
+              <p
+                className="muted"
+                style={{
+                  marginTop: 4,
+                  color: slugExists ? "#e53e3e" : undefined,
+                }}
+              >
                 {slugStatusMessage}
               </p>
             </div>
@@ -263,7 +278,12 @@ export function SettingsDialog({ projects, allLanguages, currentSlug, linked, on
             <div className="row" style={{ gap: 8, marginTop: 4 }}>
               <div className="fill" />
               <button className="btn-secondary btn-sm" onClick={onClose}>Cancel</button>
-              <button className="btn-primary btn-sm" disabled={!canCreate} onClick={handleCreate}>
+              <button
+                className="btn-primary btn-sm"
+                style={{ background: "#007a55" }}
+                disabled={!canCreate}
+                onClick={handleCreate}
+              >
                 Create project
               </button>
             </div>

@@ -42,4 +42,6 @@ export interface LinkedProjectCache {
   projectId: string | null;
   projectSlug: string | null;
   projectName: string | null;
+  defaultLanguage: string | null;
+  otherLanguages: string[];
 }

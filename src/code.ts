@@ -13,6 +13,8 @@ type LinkedProjectCache = {
   projectId: string | null;
   projectSlug: string | null;
   projectName: string | null;
+  defaultLanguage: string | null;
+  otherLanguages: string[];
 };
 
 // ─── Token storage helpers ────────────────────────────────────────────────────
@@ -61,6 +63,8 @@ async function getStoredLinkCache(): Promise<LinkedProjectCache | null> {
     projectId: value.projectId ?? null,
     projectSlug: value.projectSlug ?? null,
     projectName: value.projectName ?? null,
+    defaultLanguage: value.defaultLanguage ?? null,
+    otherLanguages: Array.isArray(value.otherLanguages) ? value.otherLanguages : [],
   };
 }
 
@@ -321,6 +325,8 @@ async function init(): Promise<void> {
           projectId?: string | null;
           projectSlug?: string | null;
           projectName?: string | null;
+          defaultLanguage?: string | null;
+          otherLanguages?: string[];
         };
         await storeLinkCache({
           linked: !!payload.linked,
@@ -328,6 +334,8 @@ async function init(): Promise<void> {
           projectId: payload.projectId ?? null,
           projectSlug: payload.projectSlug ?? null,
           projectName: payload.projectName ?? null,
+          defaultLanguage: payload.defaultLanguage ?? null,
+          otherLanguages: Array.isArray(payload.otherLanguages) ? payload.otherLanguages : [],
         });
         break;
       }

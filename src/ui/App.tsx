@@ -104,6 +104,8 @@ export function App() {
       projectId: cache.projectId,
       projectSlug: cache.projectSlug,
       projectName: cache.projectName,
+      defaultLanguage: cache.defaultLanguage,
+      otherLanguages: cache.otherLanguages,
     });
   }, []);
 
@@ -139,6 +141,8 @@ export function App() {
           projectId: matchedProject?.id || null,
           projectSlug: mappingRes.projectSlug,
           projectName: matchedProject?.name || null,
+          defaultLanguage: matchedProject?.default_language || null,
+          otherLanguages: matchedProject?.other_languages || [],
         });
         try {
           const keysRes = (await callApi("GET", `/api/projects/${encodeURIComponent(mappingRes.projectSlug)}/keys`)) as { keys?: LocalizationKey[] };
@@ -258,6 +262,8 @@ export function App() {
       projectId: selectedProject?.id || null,
       projectSlug: slug,
       projectName: selectedProject?.name || null,
+      defaultLanguage: selectedProject?.default_language || null,
+      otherLanguages: selectedProject?.other_languages || [],
     });
     try {
       const keysRes = (await callApi("GET", `/api/projects/${encodeURIComponent(slug)}/keys`)) as { keys?: LocalizationKey[] };
@@ -478,17 +484,13 @@ export function App() {
           setLinked(true);
           setProjectSlug(cachedLink.projectSlug);
           setProjects((prev) => {
-            const cachedProject: Project | null = cachedLink.projectId && cachedLink.projectName
-              ? {
-                  id: cachedLink.projectId,
-                  name: cachedLink.projectName,
-                  slug: cachedLink.projectSlug,
-                  default_language: msg.language || "en",
-                  other_languages: [],
-                }
-              : null;
-
-            if (!cachedProject) return prev;
+            const cachedProject: Project = {
+              id: cachedLink.projectId || `cached:${cachedLink.projectSlug}`,
+              name: cachedLink.projectName || cachedLink.projectSlug,
+              slug: cachedLink.projectSlug,
+              default_language: cachedLink.defaultLanguage || msg.language || "en",
+              other_languages: cachedLink.otherLanguages || [],
+            };
             const withoutDup = prev.filter((project) => project.slug !== cachedProject.slug);
             return [cachedProject, ...withoutDup];
           });
