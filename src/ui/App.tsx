@@ -1,13 +1,16 @@
 import * as React from "react";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import type { PluginConfig, SerializedNode, Project, LocalizationKey, Language, SelectionType } from "./types";
+import type { PluginConfig, SerializedNode, Project, LocalizationKey, Language, SelectionType, LinkedProjectCache } from "./types";
 import { isTokenExpired, refreshAccessToken, exchangeCodeForTokens, api } from "./api";
 import { generateCodeVerifier, generateCodeChallenge, generateRequestId } from "./crypto";
 import { LoginScreen } from "./LoginScreen";
 import { PollingScreen } from "./PollingScreen";
 import { MainScreen } from "./MainScreen";
+import { SetLanguageScreen } from "./SetLanguageScreen";
+import { NoProjectsDialog } from "./NoProjectsDialog";
 
 type Screen = "loading" | "login" | "polling" | "main";
+type PluginCommand = "open-main-ui" | "set-language";
 
 function postMsg(msg: Record<string, unknown>) {
   parent.postMessage({ pluginMessage: msg }, "*");
@@ -26,6 +29,7 @@ function getEmailFromToken(token: string | null): string | null {
 
 export function App() {
   const [screen, setScreen] = useState<Screen>("loading");
+  const [pluginCommand, setPluginCommand] = useState<PluginCommand>("open-main-ui");
   const [cfg, setCfg] = useState<PluginConfig | null>(null);
   const [fileId, setFileId] = useState<string | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -41,6 +45,8 @@ export function App() {
   const [originalKeys, setOriginalKeys] = useState<LocalizationKey[]>([]);
   const [language, setLanguageState] = useState<string | null>(null);
   const [allLanguages, setAllLanguages] = useState<Language[]>([]);
+  const [applyingLanguage, setApplyingLanguage] = useState(false);
+  const [mainDataLoaded, setMainDataLoaded] = useState(false);
 
   // Selection state
   const [selectionType, setSelectionType] = useState<SelectionType>("none");
@@ -90,9 +96,24 @@ export function App() {
     });
   }, [forceLogout, storeTokensSilent]);
 
+  const updateLinkedProjectCache = useCallback((cache: LinkedProjectCache) => {
+    postMsg({
+      type: "store-linked-project-cache",
+      linked: cache.linked,
+      fileId: cache.fileId,
+      projectId: cache.projectId,
+      projectSlug: cache.projectSlug,
+      projectName: cache.projectName,
+    });
+  }, []);
+
+  const clearLinkedProjectCache = useCallback(() => {
+    postMsg({ type: "clear-linked-project-cache" });
+  }, []);
+
   // ── Load main data (file mapping + projects + keys) ──────────────────────
   const loadMainData = useCallback(async (fid: string | null) => {
-    setScreen("main");
+    setMainDataLoaded(false);
     try {
       const [mappingRes, projectsRes, languagesRes] = await Promise.all([
         fid ? callApi("GET", `/api/figma/file-mapping?fileId=${encodeURIComponent(fid)}`) : Promise.resolve({ linked: false }),
@@ -109,8 +130,16 @@ export function App() {
       setAllLanguages(languagesRes || []);
 
       if (mappingRes.linked && mappingRes.projectSlug) {
+        const matchedProject = loadedProjects.find((project) => project.slug === mappingRes.projectSlug) || null;
         setLinked(true);
         setProjectSlug(mappingRes.projectSlug);
+        updateLinkedProjectCache({
+          linked: true,
+          fileId: mappingRes.fileId || fid,
+          projectId: matchedProject?.id || null,
+          projectSlug: mappingRes.projectSlug,
+          projectName: matchedProject?.name || null,
+        });
         try {
           const keysRes = (await callApi("GET", `/api/projects/${encodeURIComponent(mappingRes.projectSlug)}/keys`)) as { keys?: LocalizationKey[] };
           const loadedKeys = keysRes.keys || [];
@@ -125,11 +154,14 @@ export function App() {
         setProjectSlug(null);
         setKeys([]);
         setOriginalKeys([]);
+        clearLinkedProjectCache();
       }
     } catch (err) {
       console.error("[Lokalit] loadMainData failed:", err);
+    } finally {
+      setMainDataLoaded(true);
     }
-  }, [callApi]);
+  }, [callApi, clearLinkedProjectCache, updateLinkedProjectCache]);
 
   // ── OAuth flow ───────────────────────────────────────────────────────────
   const stopPolling = useCallback(() => {
@@ -216,9 +248,17 @@ export function App() {
       setFileId(res.fileId);
       postMsg({ type: "store-file-id", fileId: res.fileId });
     }
-    
+
+    const selectedProject = projects.find((project) => project.slug === slug) || null;
     setLinked(true);
     setProjectSlug(slug);
+    updateLinkedProjectCache({
+      linked: true,
+      fileId: res.fileId || fileId,
+      projectId: selectedProject?.id || null,
+      projectSlug: slug,
+      projectName: selectedProject?.name || null,
+    });
     try {
       const keysRes = (await callApi("GET", `/api/projects/${encodeURIComponent(slug)}/keys`)) as { keys?: LocalizationKey[] };
       const loadedKeys = keysRes.keys || [];
@@ -228,7 +268,47 @@ export function App() {
       setKeys([]);
       setOriginalKeys([]);
     }
-  }, [fileId, callApi]);
+  }, [fileId, callApi, projects, updateLinkedProjectCache]);
+
+  const checkSlugAvailable = useCallback(async (slug: string) => {
+    const res = await callApi("GET", `/api/projects?slug=${encodeURIComponent(slug)}`) as { available?: boolean };
+    return !!res.available;
+  }, [callApi]);
+
+  const createProject = useCallback(async (input: {
+    name: string;
+    slug: string;
+    defaultLanguage: string;
+    otherLanguages: string[];
+  }) => {
+    const res = await callApi("POST", "/api/projects", {
+      name: input.name,
+      slug: input.slug,
+      defaultLanguage: input.defaultLanguage,
+      otherLanguages: input.otherLanguages,
+    }) as { project?: Project };
+
+    if (!res.project) {
+      throw new Error("Project creation failed.");
+    }
+
+    setProjects((prev) => {
+      const withoutDup = prev.filter((p) => p.slug !== res.project!.slug);
+      return [...withoutDup, res.project!].sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    return res.project;
+  }, [callApi]);
+
+  const handleFirstProjectCreated = useCallback(async (project: Project) => {
+    try {
+      await saveFileLink(project.slug);
+      setLanguage(project.default_language);
+    } catch (err) {
+      console.error("[Lokalit] Failed to auto-link first project:", err);
+      notify("Project created, but auto-link failed. Please link manually.", { error: true });
+    }
+  }, [saveFileLink, setLanguage]);
 
   const updateKeyValue = useCallback(async (keyId: string, lang: string, value: string) => {
     if (!projectSlug) return;
@@ -255,6 +335,45 @@ export function App() {
     setKeys((prev) => [...prev, newKey].sort((a, b) => a.key.localeCompare(b.key)));
     return newKey;
   }, []);
+
+  const applySelectedLanguage = useCallback(async () => {
+    if (!projectSlug || !language) return;
+
+    const nodes = selectionType === "text" && selectionNode ? [selectionNode] : selectionTextNodes;
+    const nodesWithKeys = nodes.filter((node) => !!node.keySlug);
+    if (nodesWithKeys.length === 0) return;
+
+    setApplyingLanguage(true);
+    try {
+      const keysRes = (await callApi(
+        "GET",
+        `/api/projects/${encodeURIComponent(projectSlug)}/keys`,
+      )) as { keys?: LocalizationKey[] };
+      const latestKeys = keysRes.keys || [];
+
+      setKeys(latestKeys);
+      setOriginalKeys(latestKeys);
+
+      const updates = nodesWithKeys
+        .map((node) => {
+          const keyObj = latestKeys.find((key) => key.key === node.keySlug);
+          const value = keyObj?.values?.[language];
+          if (!value) return null;
+          return { id: node.id, characters: value };
+        })
+        .filter((update): update is { id: string; characters: string } => update !== null);
+
+      postMsg({
+        type: "apply-language-to-selection",
+        language,
+        updates,
+      });
+    } catch (err) {
+      console.error("[Lokalit] Failed to apply selected language:", err);
+      notify("Failed to apply selected language.", { error: true });
+      setApplyingLanguage(false);
+    }
+  }, [callApi, language, projectSlug, selectionNode, selectionTextNodes, selectionType]);
 
   // ── Auto-sync node plugin data ───────────────────────────────────────────
   useEffect(() => {
@@ -318,12 +437,12 @@ export function App() {
   const unlinkFile = useCallback(async () => {
     if (!fileId) return;
     await callApi("DELETE", `/api/figma/file-mapping?fileId=${encodeURIComponent(fileId)}`);
-    postMsg({ type: "clear-file-id" });
     setLinked(false);
     setProjectSlug(null);
     setKeys([]);
     setOriginalKeys([]);
-  }, [fileId, callApi]);
+    clearLinkedProjectCache();
+  }, [fileId, callApi, clearLinkedProjectCache]);
 
   const notify = (message: string, options?: { error?: boolean; timeout?: number }) => {
     postMsg({ type: "notify", message, options });
@@ -350,8 +469,30 @@ export function App() {
         const config: PluginConfig = msg.config;
         setCfg(config);
         cfgRef.current = config;
+        setPluginCommand(msg.command === "set-language" ? "set-language" : "open-main-ui");
         setFileId(msg.fileId || null);
         setLanguageState(msg.language || null);
+
+        const cachedLink = (msg.linkedProjectCache || null) as LinkedProjectCache | null;
+        if (cachedLink?.linked && cachedLink.projectSlug) {
+          setLinked(true);
+          setProjectSlug(cachedLink.projectSlug);
+          setProjects((prev) => {
+            const cachedProject: Project | null = cachedLink.projectId && cachedLink.projectName
+              ? {
+                  id: cachedLink.projectId,
+                  name: cachedLink.projectName,
+                  slug: cachedLink.projectSlug,
+                  default_language: msg.language || "en",
+                  other_languages: [],
+                }
+              : null;
+
+            if (!cachedProject) return prev;
+            const withoutDup = prev.filter((project) => project.slug !== cachedProject.slug);
+            return [cachedProject, ...withoutDup];
+          });
+        }
 
         const at = msg.accessToken || null;
         const rt = msg.refreshToken || null;
@@ -370,6 +511,8 @@ export function App() {
           setScreen("login");
           return;
         }
+
+        setScreen("main");
 
         // Refresh token if expired
         if (at && isTokenExpired(at) && rt) {
@@ -392,7 +535,7 @@ export function App() {
           }
         }
 
-        await loadMainData(msg.fileId || null);
+        void loadMainData(msg.fileId || null);
         return;
       }
 
@@ -403,11 +546,18 @@ export function App() {
           const rt = msg.refreshToken || null;
           if (at) { setAccessToken(at); accessTokenRef.current = at; }
           if (rt) { setRefreshTokenState(rt); refreshTokenRef.current = rt; }
-          await loadMainData(fileId);
+          setScreen("main");
+          void loadMainData(fileId);
         } else {
           setAccessToken(null);
           setRefreshTokenState(null);
+          setLinked(false);
+          setProjectSlug(null);
+          setProjects([]);
+          setKeys([]);
+          setOriginalKeys([]);
           setScreen("login");
+          clearLinkedProjectCache();
         }
         return;
       }
@@ -422,7 +572,7 @@ export function App() {
 
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, [fileId, loadMainData, stopPolling]);
+  }, [clearLinkedProjectCache, fileId, loadMainData, stopPolling]);
 
   // Signal to the plugin that the UI is mounted and the message listener is registered.
   // Must run exactly once — after the listener effect above has run on the first render.
@@ -432,6 +582,21 @@ export function App() {
 
   // Cleanup polling on unmount
   useEffect(() => () => stopPolling(), [stopPolling]);
+
+  const shouldShowNoProjectsDialog = screen === "main" && mainDataLoaded && projects.length === 0;
+
+  useEffect(() => {
+    if (shouldShowNoProjectsDialog) {
+      postMsg({ type: "resize-ui", width: 520, height: 640 });
+      return;
+    }
+
+    postMsg({
+      type: "resize-ui",
+      width: pluginCommand === "set-language" ? 360 : 600,
+      height: pluginCommand === "set-language" ? 260 : 400,
+    });
+  }, [pluginCommand, shouldShowNoProjectsDialog]);
 
   // ── Render ──────────────────────────────────────────────────────────────
   if (screen === "loading") {
@@ -449,6 +614,36 @@ export function App() {
 
   if (screen === "polling") {
     return <PollingScreen message={pollingMsg} />;
+  }
+
+  if (shouldShowNoProjectsDialog) {
+    return (
+      <NoProjectsDialog
+        allLanguages={allLanguages}
+        onCheckSlugAvailable={checkSlugAvailable}
+        onCreateProject={createProject}
+        onProjectCreated={handleFirstProjectCreated}
+      />
+    );
+  }
+
+  if (pluginCommand === "set-language") {
+    const currentProject = projects.find((project) => project.slug === projectSlug) || null;
+    return (
+      <SetLanguageScreen
+        linked={linked}
+        project={currentProject}
+        allLanguages={allLanguages}
+        currentLanguage={language || currentProject?.default_language || null}
+        selectionType={selectionType}
+        selectionNode={selectionNode}
+        selectionTextNodes={selectionTextNodes}
+        applying={applyingLanguage}
+        onSelectLanguage={setLanguage}
+        onConfirm={applySelectedLanguage}
+        onCancel={() => postMsg({ type: "cancel" })}
+      />
+    );
   }
 
   return (
@@ -470,10 +665,10 @@ export function App() {
       onApplyTranslations={applyTranslations}
       onRevertTranslations={revertTranslations}
       onSaveFileLink={saveFileLink}
+      onCreateProject={createProject}
+      onCheckSlugAvailable={checkSlugAvailable}
       onUnlinkFile={unlinkFile}
-      onLogout={() => {
-        postMsg({ type: "logout" });
-      }}
+      onLogout={forceLogout}
       onCreateKey={createKey}
       onSync={syncKeys}
       onNotify={notify}

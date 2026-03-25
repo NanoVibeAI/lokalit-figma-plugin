@@ -32,6 +32,13 @@ interface Props {
   onApplyTranslations: (nodes: SerializedNode[], lang: string | null) => void;
   onRevertTranslations: (nodes: SerializedNode[]) => void;
   onSaveFileLink: (slug: string) => Promise<void>;
+  onCreateProject: (input: {
+    name: string;
+    slug: string;
+    defaultLanguage: string;
+    otherLanguages: string[];
+  }) => Promise<Project>;
+  onCheckSlugAvailable: (slug: string) => Promise<boolean>;
   onUnlinkFile: () => Promise<void>;
   onLogout: () => void;
   onCreateKey: (key: string) => Promise<LocalizationKey | null>;
@@ -61,6 +68,8 @@ export function MainScreen({
   onApplyTranslations,
   onRevertTranslations,
   onSaveFileLink,
+  onCreateProject,
+  onCheckSlugAvailable,
   onUnlinkFile,
   onLogout,
   onCreateKey,
@@ -94,6 +103,15 @@ export function MainScreen({
 
   const effectiveLanguage = language || project?.default_language || null;
 
+  const handleProjectSelect = async (slug: string) => {
+    const selectedProj = projects.find((p) => p.slug === slug);
+    if (selectedProj) {
+      // Save the file link to the new project
+      await onSaveFileLink(slug);
+      // Switch language to the new project's default language
+      onSetLanguage(selectedProj.default_language);
+    }
+  };
 
   return (
     <div
@@ -104,111 +122,50 @@ export function MainScreen({
         minHeight: 0,
       }}
     >
-      {/* Header Container */}
-      <div className="header" style={{ display: "block", padding: 0 }}>
-        {/* User Auth Row */}
-        <div
-          style={{
-            display: "none", // Hidden for now
-            alignItems: "center",
-            padding: "10px 12px",
-            gap: "8px",
-          }}
-        >
-          <span
-            style={{
-              fontSize: 11,
-              color: "#888",
-              flex: 1,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+      {/* Header controls */}
+      <div className="header" style={{ padding: "8px", border: "none", display: "grid", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "64px 220px", alignItems: "center", gap: 8 }}>
+          <label htmlFor="project-select" style={{ marginBottom: 0 }}>Project:</label>
+          <select
+            id="project-select"
+            value={projectSlug || ""}
+            onChange={(e) => {
+              const slug = e.target.value;
+              if (!slug) return;
+              void handleProjectSelect(slug);
             }}
+            disabled={projects.length === 0}
+            style={{ width: "220px" }}
           >
-            Signed in as {userEmail || "…"}
-          </span>
-          <button className="btn-secondary btn-sm" onClick={onLogout}>
-            Sign out
-          </button>
+            {projects.length === 0 ? <option value="">No project</option> : null}
+            {projects.map((projectOption) => (
+              <option key={projectOption.slug} value={projectOption.slug}>
+                {projectOption.name}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {/* Linked project details */}
-        {linked && (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              padding: "8px",
-              gap: "8px",
-            }}
+        <div style={{ display: "grid", gridTemplateColumns: "64px 220px", alignItems: "center", gap: 8 }}>
+          <label htmlFor="language-select" style={{ marginBottom: 0 }}>Language:</label>
+          <select
+            id="language-select"
+            value={effectiveLanguage || ""}
+            onChange={(e) => onSetLanguage(e.target.value)}
+            disabled={!project || languages.length === 0}
+            style={{ width: "220px" }}
           >
-            <div
-              style={{ display: "flex", alignItems: "center", width: "100%" }}
-            >
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "#888",
-                  flex: 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Project: {project?.name || "Loading…"}
-              </span>
-              <a
-                style={{
-                  cursor: "pointer",
-                  color: "#18a0fb",
-                  fontSize: 11,
-                  textDecoration: "none",
-                }}
-                onClick={() => setSettingsOpen(true)}
-              >
-                Change
-              </a>
-            </div>
-            <div
-              style={{ display: "flex", alignItems: "center", width: "100%" }}
-            >
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "#888",
-                  flex: 1,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Language
-              </span>
-              <select
-                value={effectiveLanguage || ""}
-                onChange={(e) => onSetLanguage(e.target.value)}
-                style={{
-                  padding: "4px",
-                  fontSize: 11,
-                  border: "1px solid #d0d0d0",
-                  borderRadius: 4,
-                  backgroundColor: "#fff",
-                  outline: "none",
-                }}
-              >
-                {languages.map((code) => {
-                  const langObj = allLanguages.find((l) => l.key === code);
-                  const label = langObj ? langObj.name : code;
-                  return (
-                    <option key={code} value={code}>
-                      {label}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-          </div>
-        )}
+            {!project || languages.length === 0 ? <option value="">No language</option> : null}
+            {languages.map((langKey) => {
+              const langName = allLanguages.find((lang) => lang.key === langKey)?.name || langKey;
+              return (
+                <option key={langKey} value={langKey}>
+                  {langName}
+                </option>
+              );
+            })}
+          </select>
+        </div>
       </div>
 
       {/* Not-linked banner */}
@@ -227,16 +184,17 @@ export function MainScreen({
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
+            padding: "8px",
         }}
       >
         {selectionType === "none" && (
-          <div className="center" style={{ padding: "40px 16px" }}>
+          <div className="center" style={{ padding: "40px 0" }}>
             <p className="muted">Select a frame or text node to get started.</p>
           </div>
         )}
 
         {selectionType === "instance" && (
-          <div className="center" style={{ padding: "40px 16px" }}>
+          <div className="center" style={{ padding: "40px 0" }}>
             <p style={{ color: "#d9534f" }}>
               Component instances are not supported. Please select the Main
               Component instead.
@@ -299,12 +257,15 @@ export function MainScreen({
       {settingsOpen && (
         <SettingsDialog
           projects={projects}
+          allLanguages={allLanguages}
           currentSlug={projectSlug}
           linked={linked}
           onSave={async (slug) => {
             await onSaveFileLink(slug);
             setSettingsOpen(false);
           }}
+          onCreateProject={onCreateProject}
+          onCheckSlugAvailable={onCheckSlugAvailable}
           onUnlink={async () => {
             await onUnlinkFile();
             setSettingsOpen(false);

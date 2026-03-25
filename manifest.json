@@ -3,6 +3,20 @@
   "id": "1618085128748348976",
   "api": "1.0.0",
   "main": "code.js",
+  "menu": [
+    {
+      "name": "Translate",
+      "command": "open-main-ui"
+    },
+    {
+      "name": "Change language",
+      "command": "set-language"
+    },
+    {
+      "name": "Sign out",
+      "command": "sign-out"
+    }
+  ],
   "capabilities": [],
   "enableProposedApi": false,
   "documentAccess": "dynamic-page",

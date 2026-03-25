@@ -2,20 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import type { Language, Project } from "./types";
 
 interface Props {
-  projects: Project[];
   allLanguages: Language[];
-  currentSlug: string | null;
-  linked: boolean;
-  onSave: (slug: string) => Promise<void>;
+  onCheckSlugAvailable: (slug: string) => Promise<boolean>;
   onCreateProject: (input: {
     name: string;
     slug: string;
     defaultLanguage: string;
     otherLanguages: string[];
   }) => Promise<Project>;
-  onCheckSlugAvailable: (slug: string) => Promise<boolean>;
-  onUnlink: () => Promise<void>;
-  onClose: () => void;
+  onProjectCreated: (project: Project) => Promise<void>;
 }
 
 function toSlug(value: string): string {
@@ -27,18 +22,21 @@ function toSlug(value: string): string {
     .replaceAll(/-+/g, "-");
 }
 
-export function SettingsDialog({ projects, allLanguages, currentSlug, linked, onSave, onCreateProject, onCheckSlugAvailable, onUnlink, onClose }: Props) {
-  const [selectedSlug, setSelectedSlug] = useState(currentSlug || "");
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [mode, setMode] = useState<"link" | "create">("link");
-
+export function NoProjectsDialog({
+  allLanguages,
+  onCheckSlugAvailable,
+  onCreateProject,
+  onProjectCreated,
+}: Props) {
+  const [mode, setMode] = useState<"empty" | "create">("empty");
   const [newName, setNewName] = useState("");
   const newSlug = useMemo(() => toSlug(newName), [newName]);
   const [defaultLanguage, setDefaultLanguage] = useState(allLanguages[0]?.key ?? "en");
   const [otherLanguages, setOtherLanguages] = useState<string[]>([]);
   const [slugAvailable, setSlugAvailable] = useState<boolean | null>(null);
   const [slugChecking, setSlugChecking] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setDefaultLanguage((prev) => prev || allLanguages[0]?.key || "en");
@@ -92,23 +90,6 @@ export function SettingsDialog({ projects, allLanguages, currentSlug, linked, on
     return "Used in URLs. Auto-generated from project name.";
   }, [slugChecking, slugAvailable]);
 
-  const handleSave = async () => {
-    if (!selectedSlug) {
-      setError("Please select a project.");
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    try {
-      await onSave(selectedSlug);
-    } catch (e) {
-      console.error("[Lokalit] Save file link failed:", e);
-      setError(e instanceof Error ? e.message : "Failed to save. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const toggleOtherLanguage = (lang: string) => {
     setOtherLanguages((prev) => {
       if (prev.includes(lang)) return prev.filter((l) => l !== lang);
@@ -128,104 +109,61 @@ export function SettingsDialog({ projects, allLanguages, currentSlug, linked, on
         defaultLanguage,
         otherLanguages,
       });
-      setSelectedSlug(project.slug);
-      setMode("link");
+      await onProjectCreated(project);
     } catch (e) {
-      console.error("[Lokalit] Create project failed:", e);
       setError(e instanceof Error ? e.message : "Failed to create project. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleUnlink = async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      await onUnlink();
-    } catch (e) {
-      console.error("[Lokalit] Unlink file failed:", e);
-      setError("Failed to unlink. Please try again.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
-    <div className="overlay">
-      <div className="dialog">
-        <div className="row">
-          <h2>File Settings</h2>
-          <div className="fill" />
-          <button
-            className="btn-secondary btn-sm"
-            disabled={saving}
-            onClick={() => {
-              setError(null);
-              setMode((prev) => (prev === "link" ? "create" : "link"));
-            }}
-          >
-            {mode === "link" ? "New project" : "Back to link"}
-          </button>
-          <button className="icon-btn" onClick={onClose}>✕</button>
-        </div>
-
-        {mode === "link" ? (
+    <div className="overlay" style={{ alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div className="dialog" style={{ maxWidth: 420, width: "100%", borderRadius: 12 }}>
+        {mode === "empty" ? (
           <>
-            <div>
-              <label htmlFor="linked-project-select">Linked project</label>
-              <select id="linked-project-select" value={selectedSlug} onChange={(e) => setSelectedSlug(e.target.value)}>
-                {!linked && <option value="">— Select a project —</option>}
-                {projects.map((p) => (
-                  <option key={p.slug} value={p.slug}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-
+            <h2>No projects available</h2>
+            <p className="muted">There is no project created or available, please create one first.</p>
             <div className="row" style={{ gap: 8, marginTop: 4 }}>
-              {linked && (
-                <button className="btn-danger btn-sm" disabled={saving} onClick={handleUnlink}>
-                  Unlink file
-                </button>
-              )}
               <div className="fill" />
-              <button className="btn-secondary btn-sm" onClick={onClose}>Cancel</button>
-              <button className="btn-primary btn-sm" disabled={saving} onClick={handleSave}>
-                Save
-              </button>
+              <button className="btn-primary btn-sm" onClick={() => setMode("create")}>Create new project</button>
             </div>
           </>
         ) : (
           <>
+            <h2>Create first project</h2>
+
             <div>
-              <label htmlFor="new-project-name">Project name</label>
+              <label htmlFor="first-project-name">Project name</label>
               <input
-                id="new-project-name"
+                id="first-project-name"
                 type="text"
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="e.g. Mobile App"
+                disabled={saving}
               />
             </div>
 
             <div>
-              <label htmlFor="new-project-slug">Slug</label>
-              <input id="new-project-slug" type="text" value={newSlug} readOnly placeholder="auto-generated from name" />
+              <label htmlFor="first-project-slug">Slug</label>
+              <input id="first-project-slug" type="text" value={newSlug} readOnly placeholder="auto-generated from name" />
               <p className="muted" style={{ marginTop: 4 }}>
                 {slugStatusMessage}
               </p>
             </div>
 
             <div>
-              <label htmlFor="new-project-default-language">Default language</label>
+              <label htmlFor="first-project-default-language">Default language</label>
               <select
-                id="new-project-default-language"
+                id="first-project-default-language"
                 value={defaultLanguage}
                 onChange={(e) => {
                   const next = e.target.value;
                   setDefaultLanguage(next);
                   setOtherLanguages((prev) => prev.filter((l) => l !== next));
                 }}
+                disabled={saving}
               >
                 {allLanguages.map((lang) => (
                   <option key={lang.key} value={lang.key}>{lang.name}</option>
@@ -234,9 +172,9 @@ export function SettingsDialog({ projects, allLanguages, currentSlug, linked, on
             </div>
 
             <div>
-              <label htmlFor="new-project-other-languages">Other languages</label>
+              <label htmlFor="first-project-other-languages">Other languages</label>
               <div
-                id="new-project-other-languages"
+                id="first-project-other-languages"
                 style={{
                   maxHeight: 120,
                   overflowY: "auto",
@@ -253,6 +191,7 @@ export function SettingsDialog({ projects, allLanguages, currentSlug, linked, on
                         type="checkbox"
                         checked={otherLanguages.includes(lang.key)}
                         onChange={() => toggleOtherLanguage(lang.key)}
+                        disabled={saving}
                       />
                       <span>{lang.name}</span>
                     </label>
@@ -261,10 +200,10 @@ export function SettingsDialog({ projects, allLanguages, currentSlug, linked, on
             </div>
 
             <div className="row" style={{ gap: 8, marginTop: 4 }}>
+              <button className="btn-secondary btn-sm" disabled={saving} onClick={() => setMode("empty")}>Back</button>
               <div className="fill" />
-              <button className="btn-secondary btn-sm" onClick={onClose}>Cancel</button>
               <button className="btn-primary btn-sm" disabled={!canCreate} onClick={handleCreate}>
-                Create project
+                {saving ? "Creating..." : "Create new project"}
               </button>
             </div>
           </>

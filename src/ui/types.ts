@@ -35,3 +35,11 @@ export interface Language {
   key: string;
   name: string;
 }
+
+export interface LinkedProjectCache {
+  linked: boolean;
+  fileId: string | null;
+  projectId: string | null;
+  projectSlug: string | null;
+  projectName: string | null;
+}
