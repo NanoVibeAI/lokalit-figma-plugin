@@ -16,15 +16,15 @@ export interface SerializedNode {
 }
 
 export interface Project {
-  _id: string;
+  id: string;
   name: string;
   slug: string;
-  defaultLanguage: string;
-  otherLanguages: string[];
+  default_language: string;
+  other_languages: string[];
 }
 
 export interface LocalizationKey {
-  _id: string;
+  id: string;
   key: string;
   values?: Record<string, string>;
 }

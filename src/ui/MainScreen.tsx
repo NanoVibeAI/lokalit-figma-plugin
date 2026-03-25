@@ -89,10 +89,10 @@ export function MainScreen({
 
   const languages = useMemo(() => {
     if (!project) return [];
-    return [project.defaultLanguage, ...project.otherLanguages];
+    return [project.default_language, ...project.other_languages];
   }, [project]);
 
-  const effectiveLanguage = language || project?.defaultLanguage || null;
+  const effectiveLanguage = language || project?.default_language || null;
 
 
   return (
@@ -512,7 +512,7 @@ function NodeRow({
             onChange={(e: any) => setLocalValue(e.target.value)}
             onBlur={() => {
               if (language && localValue !== (shareValue || "")) {
-                onUpdateKeyValue(keyObj._id, language, localValue);
+                onUpdateKeyValue(keyObj.id, language, localValue);
               }
             }}
           />
@@ -649,7 +649,7 @@ function KeySelect({
       </div>
       {filteredKeys.map((k) => (
         <div
-          key={k._id}
+          key={k.id}
           onClick={() => {
             onChange(k.key);
             setIsOpen(false);

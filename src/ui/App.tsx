@@ -205,8 +205,8 @@ export function App() {
     
     // Optimistic UI Update: the user specifically requested skipping Figma writes for now
     // so we update the local React state directly to see UI changes.
-    setSelectionTextNodes(prev => prev.map(n => n.id === nodeId ? { ...n, keySlug } : n));
-    setSelectionNode(prev => prev && prev.id === nodeId ? { ...prev, keySlug } : prev);
+    setSelectionTextNodes(prev => prev.map(n => n.id === nodeId ? { ...n, keySlug: keySlug } : n));
+    setSelectionNode(prev => prev && prev.id === nodeId ? { ...prev, keySlug: keySlug } : prev);
   }, []);
 
   // ── Link/unlink/save settings ────────────────────────────────────────────
@@ -238,7 +238,7 @@ export function App() {
         value
       });
       setKeys((prev) => prev.map((k) => 
-        k._id === keyId ? { ...k, values: { ...k.values, [lang]: value } } : k
+        k.id === keyId ? { ...k, values: { ...k.values, [lang]: value } } : k
       ));
     } catch (err) {
       console.error("[Lokalit] Failed to update key value:", err);
@@ -248,7 +248,7 @@ export function App() {
   const createKey = useCallback(async (keyName: string) => {
     // Local-only creation until Sync is clicked
     const newKey: LocalizationKey = {
-      _id: `temp_${Date.now()}`,
+      id: `temp_${Date.now()}`,
       key: keyName.trim(),
       values: {},
     };
@@ -332,8 +332,8 @@ export function App() {
   const isDirty = useMemo(() => {
     if (keys.length !== originalKeys.length) return true;
     for (const k of keys) {
-      if (k._id.startsWith("temp_")) return true;
-      const origK = originalKeys.find((o) => o._id === k._id);
+      if (k.id.startsWith("temp_")) return true;
+      const origK = originalKeys.find((o) => o.id === k.id);
       if (!origK) return true;
       if (JSON.stringify(k.values) !== JSON.stringify(origK.values)) return true;
     }
