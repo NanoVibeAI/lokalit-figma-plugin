@@ -5,6 +5,7 @@ interface Props {
   projects: Project[];
   allLanguages: Language[];
   currentSlug: string | null;
+  initialMode?: "link" | "create";
   linked: boolean;
   onSave: (slug: string) => Promise<void>;
   onCreateProject: (input: {
@@ -27,11 +28,11 @@ function toSlug(value: string): string {
     .replaceAll(/-+/g, "-");
 }
 
-export function SettingsDialog({ projects, allLanguages, currentSlug, linked, onSave, onCreateProject, onCheckSlugAvailable, onUnlink, onClose }: Props) {
+export function SettingsDialog({ projects, allLanguages, currentSlug, initialMode = "link", linked, onSave, onCreateProject, onCheckSlugAvailable, onUnlink, onClose }: Props) {
   const [selectedSlug, setSelectedSlug] = useState(currentSlug || "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [mode, setMode] = useState<"link" | "create">("link");
+  const [mode, setMode] = useState<"link" | "create">(initialMode);
 
   const [newName, setNewName] = useState("");
   const newSlug = useMemo(() => toSlug(newName), [newName]);

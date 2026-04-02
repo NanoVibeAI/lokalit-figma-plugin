@@ -8,3 +8,4 @@ dist/
 code.js
 ui.html
 .ui-bundle.js
+manifest.private.json

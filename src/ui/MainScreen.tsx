@@ -28,7 +28,7 @@ interface Props {
     keyId: string,
     lang: string,
     value: string,
-  ) => Promise<void>;
+  ) => void;
   onApplyTranslations: (nodes: SerializedNode[], lang: string | null) => void;
   onRevertTranslations: (nodes: SerializedNode[]) => void;
   onSaveFileLink: (slug: string) => Promise<void>;
@@ -43,6 +43,7 @@ interface Props {
   onLogout: () => void;
   onCreateKey: (key: string) => Promise<LocalizationKey | null>;
   onSync: (allKeys: LocalizationKey[]) => Promise<void>;
+  onUndoChanges: () => void;
   onNotify: (
     message: string,
     options?: { error?: boolean; timeout?: number },
@@ -74,9 +75,11 @@ export function MainScreen({
   onLogout,
   onCreateKey,
   onSync,
+  onUndoChanges,
   onNotify,
 }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsMode, setSettingsMode] = useState<"link" | "create">("link");
   const [syncing, setSyncing] = useState(false);
 
   const handleSync = async () => {
@@ -89,6 +92,11 @@ export function MainScreen({
     } finally {
       setSyncing(false);
     }
+  };
+
+  const handleUndo = () => {
+    onUndoChanges();
+    onNotify("Local changes were undone.");
   };
 
   const project = useMemo(
@@ -106,9 +114,7 @@ export function MainScreen({
   const handleProjectSelect = async (slug: string) => {
     const selectedProj = projects.find((p) => p.slug === slug);
     if (selectedProj) {
-      // Save the file link to the new project
       await onSaveFileLink(slug);
-      // Switch language to the new project's default language
       onSetLanguage(selectedProj.default_language);
     }
   };
@@ -132,9 +138,13 @@ export function MainScreen({
             onChange={(e) => {
               const slug = e.target.value;
               if (!slug) return;
+              if (slug === "__new_project__") {
+                setSettingsMode("create");
+                setSettingsOpen(true);
+                return;
+              }
               void handleProjectSelect(slug);
             }}
-            disabled={projects.length === 0}
             style={{ width: "220px" }}
           >
             {projects.length === 0 ? <option value="">No project</option> : null}
@@ -143,6 +153,7 @@ export function MainScreen({
                 {projectOption.name}
               </option>
             ))}
+            <option value="__new_project__">+ New project</option>
           </select>
         </div>
 
@@ -172,7 +183,14 @@ export function MainScreen({
       {!linked && (
         <div className="banner">
           ⚠ File not linked to a project.{" "}
-          <a onClick={() => setSettingsOpen(true)}>Link now</a>
+          <a
+            onClick={() => {
+              setSettingsMode("link");
+              setSettingsOpen(true);
+            }}
+          >
+            Link now
+          </a>
         </div>
       )}
 
@@ -221,36 +239,60 @@ export function MainScreen({
         )}
       </div>
 
-      {/* Main Footer (Sync & Update) */}
       <div
         style={{
-          padding: "16px",
+          padding: "14px 12px",
+          minHeight: 48,
           borderTop: "1px solid #e5e5e5",
           background: "#fff",
+          fontSize: 11,
+          color: "#666",
           display: "flex",
-          justifyContent: "flex-end",
-          gap: "8px",
+          alignItems: "center",
+          gap: 6,
+          flexWrap: "wrap",
         }}
       >
-
-        <button
-          onClick={handleSync}
-          disabled={syncing || !isDirty}
-          style={{
-            width: "max-content",
-            padding: "8px 12px",
-            background: syncing || !isDirty ? "#ccc" : "#007a55",
-            color: "#fff",
-            border: "none",
-            borderRadius: 12,
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: syncing || !isDirty ? "default" : "pointer",
-            transition: "background 0.2s",
-          }}
-        >
-          {syncing ? "Syncing..." : "Sync to Lokalit"}
-        </button>
+        {isDirty ? (
+          <>
+            <span>
+              We have detected local changes. Push changes or undo all to sync with server.
+            </span>
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: syncing ? "#999" : "#18a0fb",
+                fontSize: 11,
+                padding: 0,
+                cursor: syncing ? "default" : "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              {syncing ? "Pushing..." : "Push"}
+            </button>
+            <span style={{ color: "#999" }}>|</span>
+            <button
+              onClick={handleUndo}
+              disabled={syncing}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: syncing ? "#999" : "#18a0fb",
+                fontSize: 11,
+                padding: 0,
+                cursor: syncing ? "default" : "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              Undo
+            </button>
+          </>
+        ) : (
+          <span>Your local keys are synced with server.</span>
+        )}
       </div>
 
       {/* Settings dialog */}
@@ -259,6 +301,7 @@ export function MainScreen({
           projects={projects}
           allLanguages={allLanguages}
           currentSlug={projectSlug}
+          initialMode={settingsMode}
           linked={linked}
           onSave={async (slug) => {
             await onSaveFileLink(slug);
@@ -299,7 +342,7 @@ function TextNodesTable({
     keyId: string,
     lang: string,
     value: string,
-  ) => Promise<void>;
+  ) => void;
   onApplyAll: (nodes: SerializedNode[], lang: string | null) => void;
   onRevertAll: (nodes: SerializedNode[]) => void;
   onCreateKey: (key: string) => Promise<LocalizationKey | null>;
@@ -412,7 +455,7 @@ function NodeRow({
     keyId: string,
     lang: string,
     value: string,
-  ) => Promise<void>;
+  ) => void;
   onCreateKey: (key: string) => Promise<LocalizationKey | null>;
   zIndex: number;
 }) {

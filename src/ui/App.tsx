@@ -316,20 +316,11 @@ export function App() {
     }
   }, [saveFileLink, setLanguage]);
 
-  const updateKeyValue = useCallback(async (keyId: string, lang: string, value: string) => {
-    if (!projectSlug) return;
-    try {
-      await callApi("PATCH", `/api/projects/${encodeURIComponent(projectSlug)}/keys/${encodeURIComponent(keyId)}`, {
-        lang,
-        value
-      });
-      setKeys((prev) => prev.map((k) => 
-        k.id === keyId ? { ...k, values: { ...k.values, [lang]: value } } : k
-      ));
-    } catch (err) {
-      console.error("[Lokalit] Failed to update key value:", err);
-    }
-  }, [projectSlug, callApi]);
+  const updateKeyValue = useCallback((keyId: string, lang: string, value: string) => {
+    setKeys((prev) => prev.map((k) =>
+      k.id === keyId ? { ...k, values: { ...k.values, [lang]: value } } : k
+    ));
+  }, []);
 
   const createKey = useCallback(async (keyName: string) => {
     // Local-only creation until Sync is clicked
@@ -398,10 +389,20 @@ export function App() {
   const syncKeys = useCallback(async (allKeys: LocalizationKey[]) => {
     if (!projectSlug) return;
     try {
-      const payload = allKeys.map(k => ({
-        key: k.key,
-        values: k.values || {}
-      }));
+      const payload = allKeys
+        .filter((key) => {
+          const original = originalKeys.find((candidate) => candidate.id === key.id);
+          if (!original) return true;
+          return JSON.stringify(key.values || {}) !== JSON.stringify(original.values || {});
+        })
+        .map((key) => ({
+          key: key.key,
+          values: key.values || {},
+        }));
+
+      if (payload.length === 0) {
+        return;
+      }
 
       const res = await callApi("POST", `/api/projects/${encodeURIComponent(projectSlug)}/keys/bulk`, {
         keys: payload
@@ -416,7 +417,17 @@ export function App() {
       console.error("[Lokalit] Sync failed:", err);
       throw err;
     }
-  }, [projectSlug, callApi]);
+  }, [projectSlug, callApi, originalKeys]);
+
+  const undoLocalKeyChanges = useCallback(() => {
+    const restored = originalKeys
+      .map((key) => ({
+        ...key,
+        values: { ...(key.values || {}) },
+      }))
+      .sort((a, b) => a.key.localeCompare(b.key));
+    setKeys(restored);
+  }, [originalKeys]);
 
   const applyTranslations = useCallback((nodes: SerializedNode[], lang: string | null) => {
     if (!lang) return;
@@ -596,12 +607,12 @@ export function App() {
     postMsg({
       type: "resize-ui",
       width: pluginCommand === "set-language" ? 360 : 600,
-      height: pluginCommand === "set-language" ? 260 : 400,
+      height: pluginCommand === "set-language" ? 360 : 400,
     });
   }, [pluginCommand, shouldShowNoProjectsDialog]);
 
   // ── Render ──────────────────────────────────────────────────────────────
-  if (screen === "loading") {
+  if (screen === "loading" || (screen === "main" && !mainDataLoaded)) {
     return (
       <div className="center">
         <div className="spinner" />
@@ -673,6 +684,7 @@ export function App() {
       onLogout={forceLogout}
       onCreateKey={createKey}
       onSync={syncKeys}
+      onUndoChanges={undoLocalKeyChanges}
       onNotify={notify}
     />
   );

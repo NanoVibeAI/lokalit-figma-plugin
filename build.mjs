@@ -5,6 +5,8 @@ import { argv } from "process";
 const isWatch = argv.includes("--watch");
 const isProd = process.env.NODE_ENV === "production";
 
+console.log(`🔨 Building in ${isProd ? "PRODUCTION" : "DEVELOPMENT"} mode...`);
+
 const define = {
   "process.env.NODE_ENV": isProd ? '"production"' : '"development"',
 };
@@ -18,6 +20,7 @@ const codeOptions = {
   platform: "browser",
   target: "es2017",
   define,
+  minify: isProd,
   logLevel: "info",
 };
 
